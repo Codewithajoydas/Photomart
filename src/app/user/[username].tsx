@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import Container from "../../../components/layout/container";
+import { useTheme } from "../../../hooks/useTheme";
 
 type UserProfile = {
   id: string;
@@ -60,6 +61,8 @@ const ACCESS_KEY = process.env.EXPO_PUBLIC_UNSPLASH_ACCESS_KEY;
 const API_BASE_URL = "https://api.unsplash.com";
 
 export default function UserScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { username } = useLocalSearchParams<{ username: string }>();
 
   const normalizedUsername = Array.isArray(username)
@@ -166,7 +169,7 @@ export default function UserScreen() {
     return (
       <Container>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#000000" />
+          <ActivityIndicator size="large" color={theme.text} />
           <Text style={styles.mutedText}>Loading photographer...</Text>
         </View>
       </Container>
@@ -178,7 +181,7 @@ export default function UserScreen() {
       <Container>
         <View style={styles.center}>
           <View style={styles.errorIcon}>
-            <Feather name="user" size={28} color="#666666" />
+            <Feather name="user" size={28} color={theme.textMuted} />
           </View>
 
           <Text style={styles.errorTitle}>Unable to load profile</Text>
@@ -188,7 +191,7 @@ export default function UserScreen() {
             style={styles.primaryButton}
             onPress={() => fetchUserData()}
           >
-            <Feather name="refresh-cw" size={16} color="#FFFFFF" />
+            <Feather name="refresh-cw" size={16} color={theme.onPrimary} />
             <Text style={styles.primaryButtonText}>Try again</Text>
           </Pressable>
 
@@ -212,7 +215,7 @@ export default function UserScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => fetchUserData(true)}
-              tintColor="#000000"
+              tintColor={theme.text}
             />
           }
         >
@@ -223,7 +226,7 @@ export default function UserScreen() {
               style={styles.headerButton}
               accessibilityLabel="Go back"
             >
-              <Feather name="arrow-left" size={21} color="#000000" />
+              <Feather name="arrow-left" size={21} color={theme.text} />
             </Pressable>
 
             <Text style={styles.headerTitle}>Photographer</Text>
@@ -237,7 +240,7 @@ export default function UserScreen() {
               style={styles.headerButton}
               accessibilityLabel="Profile options"
             >
-              <Feather name="external-link" size={19} color="#000000" />
+              <Feather name="external-link" size={19} color={theme.text} />
             </Pressable>
           </View>
 
@@ -260,14 +263,14 @@ export default function UserScreen() {
 
               {!!profile.location && (
                 <View style={styles.metaRow}>
-                  <Feather name="map-pin" size={14} color="#666666" />
+                  <Feather name="map-pin" size={14} color={theme.textMuted} />
                   <Text style={styles.metaText}>{profile.location}</Text>
                 </View>
               )}
 
               {!!profile.portfolio_url && (
                 <View style={styles.metaRow}>
-                  <Feather name="link" size={14} color="#666666" />
+                  <Feather name="link" size={14} color={theme.textMuted} />
                   <Text numberOfLines={1} style={styles.metaText}>
                     {profile.portfolio_url}
                   </Text>
@@ -333,7 +336,7 @@ export default function UserScreen() {
                     <Feather
                       name={tab === "popular" ? "trending-up" : "clock"}
                       size={14}
-                      color={selected ? "#FFFFFF" : "#444444"}
+                      color={selected ? theme.onPrimary : theme.textSecondary}
                     />
                     <Text
                       style={[
@@ -351,12 +354,12 @@ export default function UserScreen() {
             {/* Loading state */}
             {photosLoading ? (
               <View style={styles.loadingPhotos}>
-                <ActivityIndicator size="large" color="#000000" />
+                <ActivityIndicator size="large" color={theme.text} />
                 <Text style={styles.mutedText}>Loading photos...</Text>
               </View>
             ) : photos.length === 0 ? (
               <View style={styles.emptyState}>
-                <Feather name="image" size={28} color="#999999" />
+                <Feather name="image" size={28} color={theme.textMuted} />
                 <Text style={styles.emptyTitle}>No photos found</Text>
                 <Text style={styles.emptyText}>
                   This photographer has no photos to show right now.
@@ -393,7 +396,8 @@ export default function UserScreen() {
                                 item.width > 0 && item.height > 0
                                   ? item.width / item.height
                                   : 0.8,
-                              backgroundColor: item.color || "#E5E5E5",
+                              backgroundColor:
+                                item.color || theme.imagePlaceholder,
                             },
                           ]}
                           resizeMode="cover"
@@ -424,7 +428,7 @@ export default function UserScreen() {
                 <Feather
                   name="alert-circle"
                   size={15}
-                  color="#B91C1C"
+                  color={theme.error}
                 />
                 <Text style={styles.errorBannerText}>
                   {error} Tap to retry.
@@ -444,21 +448,22 @@ export default function UserScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.background,
   },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.background,
     padding: 24,
   },
   mutedText: {
     marginTop: 10,
-    color: "#777777",
+    color: theme.textSecondary,
     fontSize: 13,
   },
   header: {
@@ -467,7 +472,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    borderBottomColor: theme.divider,
   },
   headerButton: {
     width: 42,
@@ -479,7 +484,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: "center",
-    color: "#000000",
+    color: theme.text,
     fontSize: 17,
     fontWeight: "700",
   },
@@ -493,31 +498,31 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 60,
     borderWidth: 1,
-    borderColor: "#E5E5E5",
+    borderColor: theme.border,
     marginBottom: 14,
   },
   avatar: {
     width: 94,
     height: 94,
     borderRadius: 47,
-    backgroundColor: "#F0F0F0",
+    backgroundColor: theme.imagePlaceholder,
   },
   name: {
     fontSize: 23,
     fontWeight: "800",
-    color: "#000000",
+    color: theme.text,
     textAlign: "center",
   },
   username: {
     marginTop: 5,
     fontSize: 13,
-    color: "#777777",
+    color: theme.textSecondary,
   },
   bio: {
     marginTop: 14,
     maxWidth: 420,
     textAlign: "center",
-    color: "#444444",
+    color: theme.textSecondary,
     fontSize: 13,
     lineHeight: 20,
   },
@@ -531,7 +536,7 @@ const styles = StyleSheet.create({
   metaText: {
     flexShrink: 1,
     fontSize: 12,
-    color: "#666666",
+    color: theme.textSecondary,
   },
   statsCard: {
     width: "100%",
@@ -542,9 +547,9 @@ const styles = StyleSheet.create({
     paddingVertical: 17,
     paddingHorizontal: 6,
     borderWidth: 1,
-    borderColor: "#E5E5E5",
+    borderColor: theme.border,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.surface,
   },
   statItem: {
     flex: 1,
@@ -553,17 +558,17 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 17,
     fontWeight: "800",
-    color: "#000000",
+    color: theme.text,
   },
   statLabel: {
     marginTop: 5,
     fontSize: 11,
-    color: "#777777",
+    color: theme.textSecondary,
   },
   statDivider: {
     width: 1,
     height: 30,
-    backgroundColor: "#E5E5E5",
+    backgroundColor: theme.border,
   },
   photosSection: {
     paddingHorizontal: 12,
@@ -576,12 +581,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    color: "#000000",
+    color: theme.text,
     fontSize: 21,
     fontWeight: "800",
   },
   sectionSubtitle: {
-    color: "#777777",
+    color: theme.textSecondary,
     fontSize: 12,
     marginTop: 4,
   },
@@ -590,13 +595,13 @@ const styles = StyleSheet.create({
     height: 32,
     paddingHorizontal: 8,
     borderRadius: 10,
-    backgroundColor: "#F3F3F3",
+    backgroundColor: theme.surfaceSecondary,
     alignItems: "center",
     justifyContent: "center",
   },
   countText: {
     fontSize: 12,
-    color: "#222222",
+    color: theme.text,
     fontWeight: "700",
   },
   tabs: {
@@ -612,21 +617,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: "#F3F3F3",
+    backgroundColor: theme.surfaceSecondary,
     borderWidth: 1,
-    borderColor: "#F3F3F3",
+    borderColor: theme.surfaceSecondary,
   },
   activeTab: {
-    backgroundColor: "#000000",
-    borderColor: "#000000",
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
   },
   tabText: {
-    color: "#333333",
+    color: theme.textSecondary,
     fontSize: 12,
     fontWeight: "600",
   },
   activeTabText: {
-    color: "#FFFFFF",
+    color: theme.onPrimary,
   },
   masonryGrid: {
     flexDirection: "row",
@@ -653,7 +658,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   photoCaption: {
-    color: "#111111",
+    color: theme.text,
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 17,
@@ -665,7 +670,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   likesText: {
-    color: "#777777",
+    color: theme.textSecondary,
     fontSize: 11,
   },
   loadingPhotos: {
@@ -680,31 +685,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#DDDDDD",
+    borderColor: theme.border,
     borderRadius: 12,
   },
   emptyTitle: {
     marginTop: 12,
-    color: "#111111",
+    color: theme.text,
     fontSize: 15,
     fontWeight: "700",
   },
   emptyText: {
     marginTop: 6,
-    color: "#777777",
+    color: theme.textSecondary,
     fontSize: 12,
     textAlign: "center",
     lineHeight: 18,
   },
   retryButton: {
     marginTop: 14,
-    backgroundColor: "#000000",
+    backgroundColor: theme.primary,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
   },
   retryText: {
-    color: "#FFFFFF",
+    color: theme.onPrimary,
     fontSize: 12,
     fontWeight: "600",
   },
@@ -712,19 +717,19 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#F3F3F3",
+    backgroundColor: theme.surfaceSecondary,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
   },
   errorTitle: {
-    color: "#111111",
+    color: theme.text,
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 8,
   },
   errorMessage: {
-    color: "#777777",
+    color: theme.textSecondary,
     fontSize: 14,
     textAlign: "center",
     lineHeight: 21,
@@ -738,10 +743,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: "#000000",
+    backgroundColor: theme.primary,
   },
   primaryButtonText: {
-    color: "#FFFFFF",
+    color: theme.onPrimary,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -750,7 +755,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   backButtonText: {
-    color: "#333333",
+    color: theme.textSecondary,
     fontSize: 13,
   },
   errorBanner: {
@@ -759,12 +764,12 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 10,
     marginBottom: 12,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: theme.errorBackground,
     borderRadius: 10,
   },
   errorBannerText: {
     flex: 1,
-    color: "#B91C1C",
+    color: theme.error,
     fontSize: 12,
   },
   attribution: {
@@ -774,7 +779,8 @@ const styles = StyleSheet.create({
   },
   attributionText: {
     fontSize: 11,
-    color: "#999999",
+    color: theme.textMuted,
     textAlign: "center",
   },
-});
+  });
+}

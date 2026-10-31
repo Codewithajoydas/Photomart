@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { router, useLocalSearchParams } from "expo-router";
 import Container from "../../../components/layout/container";
@@ -29,6 +29,7 @@ import {
 import { setWallpaperFromUrl } from "react-native-set-live-wallpaper";
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from "../../../hooks/useTheme";
 type UnsplashPhoto = {
   id: string;
   width: number;
@@ -48,8 +49,11 @@ type UnsplashPhoto = {
   };
 };
 const ACCESS_KEY = process.env.EXPO_PUBLIC_UNSPLASH_ACCESS_KEY;
+const PAGE_SIZE = 20;
 
 export default function TopicScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { topic, topicName } = useLocalSearchParams<{
     topic?: string | string[];
     topicName?: string | string[];
@@ -63,7 +67,14 @@ export default function TopicScreen() {
   const topicSlug = Array.isArray(topic) ? topic[0] : topic;
   const title = Array.isArray(topicName) ? topicName[0] : topicName;
   const [images, setImages] = useState<UnsplashPhoto[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const pageRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const fetchingRef = useRef(false);
+  const requestIdRef = useRef(0);
   const [selectedPhoto, setSelectedPhoto] = useState<UnsplashPhoto | null>(
     null,
   );
@@ -239,12 +250,16 @@ export default function TopicScreen() {
     }
   };
 
-  useEffect(() => {
-    if (!topicSlug) return;
-    let cancelled = false;
-    const loadImages = async () => {
-      setLoading(true);
-
+  const loadImages = useCallback(
+    async (page: number, append = false) => {
+      if (!topicSlug || (append && (fetchingRef.current || !hasMoreRef.current))) {
+        return;
+      }
+      const requestId = append ? requestIdRef.current : ++requestIdRef.current;
+      fetchingRef.current = true;
+      setLoading(!append);
+      setLoadingMore(append);
+      setError(null);
       try {
         const baseURL = process.env.EXPO_PUBLIC_UNSPLASH_URL?.replace(
           /\/+$/,
@@ -255,7 +270,7 @@ export default function TopicScreen() {
         if (!baseURL || !accessKey) {
           throw new Error("Unsplash API configuration is missing");
         }
-        const apiURL = `${baseURL}/topics/${encodeURIComponent(topicSlug)}/photos`;
+        const apiURL = `${baseURL}/topics/${encodeURIComponent(topicSlug)}/photos?per_page=${PAGE_SIZE}&page=${page}`;
         const response = await fetch(apiURL, {
           method: "GET",
           headers: {
@@ -265,62 +280,84 @@ export default function TopicScreen() {
         });
 
         if (!response.ok) {
-          const errorBody = await response.text();
-
-          console.error("Unsplash API error:", response.status, errorBody);
-
-          if (!cancelled) {
-            setImages([]);
-
-            ToastAndroid.show(
-              `API Error: ${response.status}`,
-              ToastAndroid.SHORT,
-            );
-          }
-
-          return;
+          throw new Error(`Unable to load collection images (${response.status}).`);
         }
 
         const data: UnsplashPhoto[] = await response.json();
-
-        if (!cancelled) {
-          setImages(data);
+        if (requestId === requestIdRef.current) {
+          setImages((current) => {
+            if (!append) return data;
+            const existingIds = new Set(current.map((photo) => photo.id));
+            return [...current, ...data.filter((photo) => !existingIds.has(photo.id))];
+          });
+          pageRef.current = page;
+          hasMoreRef.current = data.length === PAGE_SIZE;
+          setHasMore(hasMoreRef.current);
         }
       } catch (error) {
         console.error("Failed to load topic images:", error);
-
-        if (!cancelled) {
-          ToastAndroid.show("Failed to load images", ToastAndroid.SHORT);
+        if (requestId === requestIdRef.current) {
+          setError(error instanceof Error ? error.message : "Failed to load images.");
         }
       } finally {
-        if (!cancelled) {
+        if (requestId === requestIdRef.current) {
+          fetchingRef.current = false;
           setLoading(false);
+          setLoadingMore(false);
         }
       }
-    };
+    },
+    [topicSlug],
+  );
 
-    loadImages();
+  useEffect(() => {
+    if (!topicSlug) {
+      setLoading(false);
+      return;
+    }
+
+    requestIdRef.current += 1;
+    pageRef.current = 0;
+    hasMoreRef.current = true;
+    setHasMore(true);
+    setImages([]);
+    setError(null);
+    void loadImages(1);
 
     return () => {
-      cancelled = true;
+      requestIdRef.current += 1;
     };
-  }, [topicSlug]);
+  }, [loadImages, topicSlug]);
+
+  const loadNextPage = () => {
+    if (loading || loadingMore || error || !hasMoreRef.current) return;
+    void loadImages(pageRef.current + 1, true);
+  };
+
+  const retryLoad = () => {
+    if (loading || loadingMore) return;
+    if (pageRef.current === 0) {
+      void loadImages(1);
+    } else {
+      void loadImages(pageRef.current + 1, true);
+    }
+  };
 
   return (
     <Container>
       <View className="flex-1 p-2">
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <Pressable
             onPress={() => router.back()}
             style={styles.iconButton}
             hitSlop={8}
             accessibilityLabel="Go back"
           >
-            <Feather name="arrow-left" size={22} color="#111827" />
+            <Feather name="arrow-left" size={22} color={theme.text} />
           </Pressable>
 
-          <Text style={styles.headerTitle} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
             {title ?? topicSlug ?? "Topic"}
           </Text>
 
@@ -330,7 +367,7 @@ export default function TopicScreen() {
         {/* Images */}
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#111827" />
+            <ActivityIndicator size="large" color={theme.text} />
           </View>
         ) : (
           <FlatList
@@ -365,11 +402,11 @@ export default function TopicScreen() {
                     />
 
                     <View style={styles.authorInfo}>
-                      <Text style={styles.username} numberOfLines={1}>
+                      <Text style={[styles.username, { color: theme.text }]} numberOfLines={1}>
                         {item.user.username}
                       </Text>
 
-                      <Text style={styles.date}>
+                      <Text style={[styles.date, { color: theme.textSecondary }]}>
                         {new Date(item.updated_at).toLocaleDateString()}
                       </Text>
                     </View>
@@ -383,7 +420,7 @@ export default function TopicScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`More options for ${item.alt_description ?? "image"}`}
                   >
-                    <Feather name="more-horizontal" size={24} color="#111827" />
+                    <Feather name="more-horizontal" size={24} color={theme.text} />
                   </Pressable>
                 </View>
 
@@ -402,20 +439,53 @@ export default function TopicScreen() {
                       styles.photo,
                       {
                         aspectRatio: item.width / item.height,
+                        backgroundColor: theme.imagePlaceholder,
                       },
                     ]}
                     resizeMode="cover"
                   />
 
                   {/* Photo description */}
-                  <Text style={styles.description}>
+                  <Text style={[styles.description, { color: theme.textSecondary }]}>
                     {item.alt_description ?? "Untitled image"}
                   </Text>
                 </Pressable>
               </View>
             )}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>No images found.</Text>
+              error ? (
+                <Pressable onPress={retryLoad}>
+                  <Text
+                    style={[
+                      styles.emptyText,
+                      { color: theme.error },
+                    ]}
+                  >
+                    {error} Tap to retry.
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text
+                  style={[styles.emptyText, { color: theme.textSecondary }]}
+                >
+                  No images found.
+                </Text>
+              )
+            }
+            onEndReached={loadNextPage}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              <View style={styles.footer}>
+                {loadingMore && <ActivityIndicator size="small" color={theme.text} />}
+                {error && images.length > 0 && (
+                  <Pressable onPress={retryLoad}>
+                    <Text style={{ color: theme.error }}>{error} Tap to retry.</Text>
+                  </Pressable>
+                )}
+                {!hasMore && images.length > 0 && (
+                  <Text style={{ color: theme.textSecondary }}>No more images.</Text>
+                )}
+              </View>
             }
           />
         )}
@@ -429,38 +499,38 @@ export default function TopicScreen() {
         enablePanDownToClose
         backdropComponent={renderBackdrop}
         onChange={handleSheetChanges}
-        backgroundStyle={styles.sheetBackground}
-        handleIndicatorStyle={styles.sheetIndicator}
+        backgroundStyle={[styles.sheetBackground, { backgroundColor: theme.surface }]}
+        handleIndicatorStyle={[styles.sheetIndicator, { backgroundColor: theme.borderStrong }]}
       >
         <BottomSheetView style={styles.sheetContent}>
-          <Text style={styles.sheetTitle}>Image options</Text>
+          <Text style={[styles.sheetTitle, { color: theme.text }]}>Image options</Text>
 
           {selectedPhoto && (
-            <Text style={styles.selectedUsername}>
+            <Text style={[styles.selectedUsername, { color: theme.textSecondary }]}>
               Photo by {selectedPhoto.user.name}
             </Text>
           )}
 
           <Pressable style={styles.option} onPress={saveImage}>
-            <Feather name="download" size={20} color="#111827" />
-            <Text style={styles.optionText}>Download image</Text>
+            <Feather name="download" size={20} color={theme.text} />
+            <Text style={[styles.optionText, { color: theme.text }]}>Download image</Text>
           </Pressable>
 
           <Pressable style={styles.option} onPress={shareImage}>
-            <Feather name="share-2" size={20} color="#111827" />
-            <Text style={styles.optionText}>Share image</Text>
+            <Feather name="share-2" size={20} color={theme.text} />
+            <Text style={[styles.optionText, { color: theme.text }]}>Share image</Text>
           </Pressable>
 
           <Pressable style={styles.option} onPress={setWallpaper}>
-            <Feather name="image" size={20} color="#111827" />
-            <Text style={styles.optionText}>Set as wallpaper</Text>
+            <Feather name="image" size={20} color={theme.text} />
+            <Text style={[styles.optionText, { color: theme.text }]}>Set as wallpaper</Text>
           </Pressable>
 
           <Pressable
             style={[styles.option, styles.cancelOption]}
             onPress={closeOptions}
           >
-            <Feather name="x" size={20} color="#DC2626" />
+            <Feather name="x" size={20} color={theme.error} />
             <Text style={[styles.optionText, styles.cancelText]}>Cancel</Text>
           </Pressable>
         </BottomSheetView>
@@ -469,14 +539,15 @@ export default function TopicScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   header: {
     height: 58,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: theme.divider,
   },
 
   iconButton: {
@@ -491,7 +562,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 17,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
 
   headerRight: {
@@ -542,12 +613,12 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
 
   date: {
     fontSize: 11,
-    color: "#6B7280",
+    color: theme.textSecondary,
     marginTop: 3,
   },
 
@@ -562,7 +633,7 @@ const styles = StyleSheet.create({
   photo: {
     width: "100%",
     borderRadius: 10,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: theme.imagePlaceholder,
   },
 
   description: {
@@ -570,21 +641,21 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     fontSize: 14,
     lineHeight: 20,
-    color: "#374151",
+    color: theme.textSecondary,
   },
 
   emptyText: {
     padding: 16,
     textAlign: "center",
-    color: "#6B7280",
+    color: theme.textSecondary,
   },
 
   sheetBackground: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.surface,
   },
 
   sheetIndicator: {
-    backgroundColor: "#D1D5DB",
+    backgroundColor: theme.borderStrong,
     width: 40,
   },
 
@@ -594,17 +665,24 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 24,
   },
+  footer: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+  },
 
   sheetTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
     marginBottom: 4,
   },
 
   selectedUsername: {
     fontSize: 13,
-    color: "#6B7280",
+    color: theme.textSecondary,
     marginBottom: 12,
   },
 
@@ -620,7 +698,7 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 15,
     fontWeight: "500",
-    color: "#111827",
+    color: theme.text,
   },
 
   cancelOption: {
@@ -628,6 +706,7 @@ const styles = StyleSheet.create({
   },
 
   cancelText: {
-    color: "#DC2626",
+    color: theme.error,
   },
-});
+  });
+}

@@ -1,6 +1,7 @@
-# Welcome to your Expo app 👋
+# PhotoMart
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+PhotoMart is an [Expo](https://expo.dev) app for discovering and saving photos.
+It supports persisted light/dark appearance and paginated photo feeds.
 
 ## Get started
 

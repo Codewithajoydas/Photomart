@@ -13,6 +13,8 @@ import React, { useEffect, useState } from "react";
 import Container from "../../../components/layout/container";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import HeaderComponent from "../../../components/layout/header";
+import { useTheme } from "@/hooks/useTheme";
 
 type category = {
   title: string;
@@ -55,10 +57,11 @@ type category = {
 };
 
 export default function category() {
+  const theme = useTheme();
   const [collectionData, setCollectionData] = useState<
     category[] | undefined
   >();
-  const [search, setSearch] = useState<string>();
+  const [searchText, setSearchText] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   const loadCategory = async (category?: string) => {
@@ -92,51 +95,87 @@ export default function category() {
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center">
-        <ActivityIndicator size={"large"} color={"#000"} />
-        <Text>Loading...</Text>
-      </View>
+      <Container>
+        <View
+          className="flex-1 justify-center items-center"
+          style={{ backgroundColor: theme.background }}
+        >
+          <ActivityIndicator size="large" color={theme.text} />
+          <Text style={{ color: theme.text }}>Loading...</Text>
+        </View>
+      </Container>
     );
   }
   return (
     <Container>
+      <HeaderComponent title={"Category"} />
       <View className="p-2 flex-1">
-        {/* title */}
-        <View className="mb-3">
-          <Text className="text-2xl font-bold">Category</Text>
-        </View>
-        {/* title */}
-
         {/* search bar */}
-        <View className="flex-row items-center gap-2">
-          <View className="flex-row items-center border border-gray-200 flex-1 px-2 rounded-[10px]">
-            <Feather name="search" size={20} />
+        {/* Search bar */}
+        <View style={styles.searchRow}>
+          <View
+            style={[styles.searchInputContainer, { borderColor: theme.border }]}
+          >
+            <Feather name="search" size={20} color={theme.textSecondary} />
             <TextInput
-              placeholder="Search category..."
-              placeholderTextColor={"#000"}
-              onChangeText={(e) => setSearch(e)}
-              className="text-black"
-              onSubmitEditing={() => loadCategory(search)}
+              value={searchText}
+              onChangeText={setSearchText}
+              style={[{ color: theme.text }, styles.searchInput]}
+              placeholderTextColor={theme.textSecondary}
+              placeholder="Search images..."
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={true}
             />
+
+            {searchText?.length > 0 && (
+              <Pressable
+                onPress={() => {
+                  setSearchText("");
+                }}
+                hitSlop={8}
+              >
+                <Feather
+                  name="x-circle"
+                  size={18}
+                  color={theme.textSecondary}
+                />
+              </Pressable>
+            )}
           </View>
-          <Pressable className="flex flex-row gap-2 items-center bg-black px-3 py-3 rounded-[10px]">
-            <Feather name="search" size={20} color={"white"} />
-            <Text className="text-white font-bold">Search</Text>
+
+          <Pressable
+            style={[styles.searchButton, { backgroundColor: theme.primary }]}
+          >
+            <Feather name="search" size={18} color={theme.textInverse} />
+            <Text
+              style={[styles.searchButtonText, { color: theme.textInverse }]}
+            >
+              Search
+            </Text>
           </Pressable>
         </View>
         {/* search bar */}
 
         {/* category */}
-        <View className=" mt-3">
+        <View
+          className="flex-1 h-full"
+          style={{ backgroundColor: theme.background }}
+        >
           <FlatList
             data={collectionData}
             key={"something-great"}
             keyExtractor={(item) => item.id}
             numColumns={2}
-            style={{ gap: 2 }}
-            contentContainerStyle={{ padding: 2, gap: 2 }}
+            style={{ flex: 1, gap: 2 }}
+            contentContainerStyle={{
+              gap: 2,
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
             renderItem={({ item, index }) => (
-              <View className="w-[200px] m-2" key={index}>
+              <View className="w-[200px] mr-[10px] mb-[10px]" key={index}>
                 <Pressable
                   onPress={() =>
                     router.push({
@@ -145,7 +184,12 @@ export default function category() {
                     })
                   }
                 >
-                  <View>
+                  <View
+                    style={{
+                      backgroundColor: theme.surface,
+                      borderRadius: 10,
+                    }}
+                  >
                     <Image
                       source={{ uri: item?.cover_photo?.urls.regular }}
                       style={{
@@ -164,12 +208,19 @@ export default function category() {
                         },
                       ]}
                     >
-                      <Text className="text-2xl text-white font-bold">
+                      <Text
+                        className="text-2xl font-bold"
+                        style={{ color: "#FFFFFF" }}
+                      >
                         {item.total_photos}+
                       </Text>
                     </View>
                   </View>
-                  <Text numberOfLines={1} className="capitalize font-bold">
+                  <Text
+                    numberOfLines={1}
+                    className="capitalize font-bold"
+                    style={{ color: theme.text }}
+                  >
                     {item.title}
                   </Text>
                 </Pressable>
@@ -179,7 +230,50 @@ export default function category() {
         </View>
         {/* category */}
       </View>
-      <View className="mb-[100px]" />
     </Container>
   );
 }
+
+const styles = StyleSheet.create({
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  searchInputContainer: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    minHeight: 44,
+  },
+
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 8,
+  },
+
+  searchButton: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    backgroundColor: "#000",
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  searchButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+});
