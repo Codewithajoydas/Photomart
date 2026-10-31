@@ -24,7 +24,6 @@
         "expo-build-properties",
         {
           "android": {
-            "cmakeVersion": "3.31.6"
           }
         }
       ],
@@ -43,6 +42,16 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "80eb9786-a95d-4dc0-b5a9-1c306b57b355"
+      }
     }
   }
 }
