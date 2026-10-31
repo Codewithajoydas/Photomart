@@ -1,6 +1,13 @@
+<<<<<<< HEAD
 <div align="center">
 
 # PhotoMart
+=======
+# PhotoMart
+
+PhotoMart is an [Expo](https://expo.dev) app for discovering and saving photos.
+It supports persisted light/dark appearance and paginated photo feeds.
+>>>>>>> main
 
 ### A React Native image discovery and wallpaper app built with Expo
 

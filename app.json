@@ -1,36 +1,29 @@
 {
   "expo": {
-    "name": "expenseTracker",
-    "slug": "expenseTracker",
+    "name": "PhotoMart",
+    "slug": "photomart",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "expensetracker",
+    "scheme": "photomart",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.ajoy974.photomart",
       "icon": "./assets/expo.icon"
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
       "predictiveBackGestureEnabled": false,
-      "package": "com.ajoy974.expenseTracker"
+      "package": "com.ajoy974.photomart"
     },
     "web": {
       "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "react-native-set-live-wallpaper",
       [
         "expo-build-properties",
         {
           "android": {
-            "cmakeVersion": "3.31.6"
           }
         }
       ],
@@ -38,18 +31,27 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#fff",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
       ],
-      "expo-build-properties",
       "react-native-set-live-wallpaper",
       "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "80eb9786-a95d-4dc0-b5a9-1c306b57b355"
+      }
     }
   }
 }

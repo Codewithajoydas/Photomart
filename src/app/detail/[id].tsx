@@ -1,5 +1,5 @@
 import { useLocalSearchParams, router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
   requestPermissionsAsync,
 } from "expo-media-library/legacy";
 import { setWallpaperFromUrl } from "react-native-set-live-wallpaper";
+import { useTheme } from "../../../hooks/useTheme";
 
 type UnsplashPhoto = {
   id: string;
@@ -59,6 +60,7 @@ type UnsplashPhoto = {
 };
 
 const ACCESS_KEY = process.env.EXPO_PUBLIC_UNSPLASH_ACCESS_KEY;
+const USER_PHOTO_PAGE_SIZE = 20;
 
 function showMessage(message: string) {
   if (Platform.OS === "android") {
@@ -71,6 +73,8 @@ function showMessage(message: string) {
 export default function DetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [image, setImage] = useState<UnsplashPhoto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +86,13 @@ export default function DetailScreen() {
   const [openMenu, setOpenMenu] = useState(false);
   const [userPosts, setUserPosts] = useState<UnsplashPhoto[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [showAllPosts, setShowAllPosts] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [postsPage, setPostsPage] = useState(1);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const postsRequestId = useRef(0);
+  const postsLoadingRef = useRef(false);
+  const hasMorePostsRef = useRef(true);
 
   // Fetch the selected photo.
   useEffect(() => {
@@ -147,21 +157,27 @@ export default function DetailScreen() {
     };
   }, [id]);
 
-  // Fetch other photos uploaded by the same photographer.
-  useEffect(() => {
-    const username = image?.user.username;
-    if (!username || !ACCESS_KEY) return;
+  const loadUserPosts = useCallback(
+    async (page: number, append = false) => {
+      const username = image?.user.username;
+      if (!username || !ACCESS_KEY) return;
+      if (
+        append &&
+        (postsLoadingRef.current || !hasMorePostsRef.current)
+      ) {
+        return;
+      }
 
-    let cancelled = false;
-
-    async function loadUserPosts() {
+      const requestId = append ? postsRequestId.current : ++postsRequestId.current;
+      postsLoadingRef.current = true;
+      setPostsLoading(!append);
+      setLoadingMorePosts(append);
+      setPostsError(null);
       try {
-        setPostsLoading(true);
-
         const response = await fetch(
           `https://api.unsplash.com/users/${encodeURIComponent(
-            username as string,
-          )}/photos?per_page=20&order_by=popular`,
+            username,
+          )}/photos?per_page=${USER_PHOTO_PAGE_SIZE}&order_by=popular&page=${page}`,
           {
             headers: {
               Authorization: `Client-ID ${ACCESS_KEY}`,
@@ -177,28 +193,55 @@ export default function DetailScreen() {
         }
 
         const data: UnsplashPhoto[] = await response.json();
-
-        if (!cancelled) {
-          setUserPosts(data.filter((photo) => photo.id !== image?.id));
+        if (requestId === postsRequestId.current) {
+          const nextPosts = data.filter((photo) => photo.id !== image.id);
+          setUserPosts((current) => {
+            if (!append) return nextPosts;
+            const existingIds = new Set(current.map((photo) => photo.id));
+            return [
+              ...current,
+              ...nextPosts.filter((photo) => !existingIds.has(photo.id)),
+            ];
+          });
+          setPostsPage(page);
+          hasMorePostsRef.current = data.length === USER_PHOTO_PAGE_SIZE;
+          setHasMorePosts(hasMorePostsRef.current);
         }
       } catch (err) {
-        if (!cancelled) {
-          console.error("Error loading photographer photos:", err);
-          setUserPosts([]);
+        console.error("Error loading photographer photos:", err);
+        if (requestId === postsRequestId.current) {
+          setPostsError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load photographer photos.",
+          );
         }
       } finally {
-        if (!cancelled) {
+        if (requestId === postsRequestId.current) {
+          postsLoadingRef.current = false;
           setPostsLoading(false);
+          setLoadingMorePosts(false);
         }
       }
-    }
+    },
+    [image],
+  );
 
-    loadUserPosts();
+  useEffect(() => {
+    if (!image) return;
+
+    postsRequestId.current += 1;
+    postsLoadingRef.current = false;
+    hasMorePostsRef.current = true;
+    setUserPosts([]);
+    setPostsPage(1);
+    setHasMorePosts(true);
+    void loadUserPosts(1);
 
     return () => {
-      cancelled = true;
+      postsRequestId.current += 1;
     };
-  }, [image?.id, image?.user.username]);
+  }, [image, loadUserPosts]);
 
   const saveImage = async () => {
     if (!image || saving) return;
@@ -322,7 +365,7 @@ export default function DetailScreen() {
     return (
       <Container>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#111827" />
+          <ActivityIndicator size="large" color={theme.text} />
           <Text style={styles.loadingText}>Loading photo...</Text>
         </View>
       </Container>
@@ -334,14 +377,14 @@ export default function DetailScreen() {
       <Container>
         <View style={styles.center}>
           <View style={styles.errorIcon}>
-            <Feather name="image" size={30} color="#6B7280" />
+            <Feather name="image" size={30} color={theme.textMuted} />
           </View>
           <Text style={styles.errorTitle}>Unable to load photo</Text>
           <Text style={styles.errorMessage}>
             {error || "Photo details are unavailable."}
           </Text>
           <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Feather name="arrow-left" size={18} color="#FFFFFF" />
+            <Feather name="arrow-left" size={18} color={theme.onPrimary} />
             <Text style={styles.backButtonText}>Go Back</Text>
           </Pressable>
         </View>
@@ -349,7 +392,6 @@ export default function DetailScreen() {
     );
   }
 
-  const visiblePosts = showAllPosts ? userPosts : userPosts.slice(0, 8);
   const photoWidth = Math.max(1, width - 32);
   const description =
     image.description ||
@@ -359,7 +401,9 @@ export default function DetailScreen() {
   return (
     <Container>
       <View style={styles.screen}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar
+          barStyle={theme.background === "#0A0A0A" ? "light-content" : "dark-content"}
+        />
 
         <View style={styles.header}>
           <Pressable
@@ -368,7 +412,7 @@ export default function DetailScreen() {
             hitSlop={8}
             accessibilityLabel="Go back"
           >
-            <Feather name="arrow-left" size={22} color="#111827" />
+            <Feather name="arrow-left" size={22} color={theme.text} />
           </Pressable>
 
           <Text style={styles.headerTitle}>Photo Details</Text>
@@ -378,7 +422,7 @@ export default function DetailScreen() {
             style={styles.menuButton}
             accessibilityLabel="Open photo actions"
           >
-            <Feather name="more-vertical" size={22} color="#111827" />
+            <Feather name="more-vertical" size={22} color={theme.text} />
           </Pressable>
         </View>
 
@@ -399,9 +443,9 @@ export default function DetailScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator size="small" color="#111827" />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : (
-                  <Feather name="download" size={19} color="#111827" />
+                  <Feather name="download" size={19} color={theme.text} />
                 )}
                 <Text style={styles.menuText}>
                   {saving ? "Downloading..." : "Download Image"}
@@ -414,9 +458,9 @@ export default function DetailScreen() {
                 disabled={settingWallpaper}
               >
                 {settingWallpaper ? (
-                  <ActivityIndicator size="small" color="#111827" />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : (
-                  <MaterialIcons name="wallpaper" size={20} color="#111827" />
+                  <MaterialIcons name="wallpaper" size={20} color={theme.text} />
                 )}
                 <Text style={styles.menuText}>
                   {settingWallpaper
@@ -434,9 +478,9 @@ export default function DetailScreen() {
                 disabled={sharing}
               >
                 {sharing ? (
-                  <ActivityIndicator size="small" color="#111827" />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : (
-                  <Feather name="share" size={19} color="#111827" />
+                  <Feather name="share" size={19} color={theme.text} />
                 )}
                 <Text style={styles.menuText}>
                   {sharing ? "Preparing..." : "Share Image"}
@@ -455,7 +499,7 @@ export default function DetailScreen() {
                   );
                 }}
               >
-                <Feather name="help-circle" size={19} color="#111827" />
+                <Feather name="help-circle" size={19} color={theme.text} />
                 <Text style={styles.menuText}>Help & Feedback</Text>
               </Pressable>
             </View>
@@ -477,7 +521,7 @@ export default function DetailScreen() {
                     image.width > 0 && image.height > 0
                       ? image.width / image.height
                       : 1,
-                  backgroundColor: image.color || "#E5E7EB",
+                  backgroundColor: image.color || theme.imagePlaceholder,
                 },
               ]}
               resizeMode="contain"
@@ -536,7 +580,7 @@ export default function DetailScreen() {
                 <Text style={styles.photographerName}>{image.user.name}</Text>
                 <Text style={styles.username}>@{image.user.username}</Text>
               </View>
-              <Feather name="chevron-right" size={20} color="#9CA3AF" />
+              <Feather name="chevron-right" size={20} color={theme.textMuted} />
             </Pressable>
 
             <Pressable onPress={() => setShowMore((current) => !current)}>
@@ -577,36 +621,22 @@ export default function DetailScreen() {
                   Discover more photos by @{image.user.username}
                 </Text>
               </View>
-
-              {userPosts.length > 8 && (
-                <Pressable
-                  style={styles.viewAllButton}
-                  onPress={() => setShowAllPosts((current) => !current)}
-                >
-                  <Text style={styles.viewAllText}>
-                    {showAllPosts ? "Show less" : "View all"}
-                  </Text>
-                  <Feather
-                    name={showAllPosts ? "arrow-up" : "arrow-right"}
-                    size={14}
-                    color="#111827"
-                  />
-                </Pressable>
-              )}
             </View>
 
             {postsLoading ? (
               <View style={styles.postsLoading}>
-                <ActivityIndicator size="small" color="#111827" />
+                <ActivityIndicator size="small" color={theme.text} />
                 <Text style={styles.postsLoadingText}>Loading photos...</Text>
               </View>
             ) : userPosts.length > 0 ? (
               <FlatList
                 horizontal
-                data={visiblePosts}
+                data={userPosts}
                 keyExtractor={(item) => item.id}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.postsList}
+                onEndReached={() => void loadUserPosts(postsPage + 1, true)}
+                onEndReachedThreshold={0.5}
                 renderItem={({ item }) => (
                   <Pressable
                     style={styles.postCard}
@@ -621,7 +651,7 @@ export default function DetailScreen() {
                       source={{ uri: item.urls.small || item.urls.regular }}
                       style={[
                         styles.postImage,
-                        { backgroundColor: item.color || "#E5E7EB" },
+                        { backgroundColor: item.color || theme.imagePlaceholder },
                       ]}
                       resizeMode="cover"
                     />
@@ -632,13 +662,44 @@ export default function DetailScreen() {
                     </Text>
                   </Pressable>
                 )}
+                ListFooterComponent={
+                  <View style={styles.postsFooter}>
+                    {loadingMorePosts && (
+                      <ActivityIndicator size="small" color={theme.text} />
+                    )}
+                    {postsError && (
+                      <Pressable
+                        onPress={() => void loadUserPosts(postsPage + 1, true)}
+                      >
+                        <Text style={{ color: theme.error }}>
+                          {postsError} Tap to retry.
+                        </Text>
+                      </Pressable>
+                    )}
+                    {!hasMorePosts && (
+                      <Text style={{ color: theme.textMuted }}>
+                        No more photos.
+                      </Text>
+                    )}
+                  </View>
+                }
               />
             ) : (
               <View style={styles.emptyPosts}>
-                <Feather name="image" size={22} color="#9CA3AF" />
-                <Text style={styles.emptyPostsText}>
-                  No other photos available right now.
-                </Text>
+                {postsError ? (
+                  <Pressable onPress={() => void loadUserPosts(1)}>
+                    <Text style={{ color: theme.error }}>
+                      {postsError} Tap to retry.
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <>
+                    <Feather name="image" size={22} color={theme.textMuted} />
+                    <Text style={styles.emptyPostsText}>
+                      No other photos available right now.
+                    </Text>
+                  </>
+                )}
               </View>
             )}
 
@@ -654,28 +715,29 @@ export default function DetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.background,
   },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.background,
     padding: 24,
   },
   loadingText: {
     marginTop: 12,
-    color: "#6B7280",
+    color: theme.textSecondary,
     fontSize: 14,
   },
   errorIcon: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: theme.surfaceSecondary,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -683,12 +745,12 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
     marginBottom: 8,
   },
   errorMessage: {
     fontSize: 14,
-    color: "#6B7280",
+    color: theme.textSecondary,
     textAlign: "center",
     lineHeight: 21,
   },
@@ -697,14 +759,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#111827",
+    backgroundColor: theme.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 24,
   },
   backButtonText: {
-    color: "#FFFFFF",
+    color: theme.onPrimary,
     fontWeight: "600",
     fontSize: 14,
   },
@@ -714,7 +776,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: theme.divider,
   },
   iconButton: {
     width: 40,
@@ -727,13 +789,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 17,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
   menuButton: {
     width: 40,
     height: 40,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: theme.border,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
@@ -747,12 +809,12 @@ const styles = StyleSheet.create({
     top: 62,
     right: 16,
     minWidth: 220,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.surface,
     padding: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000000",
+    borderColor: theme.border,
+    shadowColor: theme.shadow,
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
@@ -768,13 +830,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   menuText: {
-    color: "#111827",
+    color: theme.text,
     fontSize: 14,
     fontWeight: "500",
   },
   menuDivider: {
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: theme.border,
     marginVertical: 5,
   },
   scrollContent: {
@@ -809,22 +871,22 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   likesIcon: {
-    backgroundColor: "#FFF1F2",
+    backgroundColor: theme.errorBackground,
   },
   viewsIcon: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: theme.infoBackground,
   },
   downloadsIcon: {
-    backgroundColor: "#ECFDF5",
+    backgroundColor: theme.successBackground,
   },
   statValue: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
   statLabel: {
     fontSize: 11,
-    color: "#6B7280",
+    color: theme.textSecondary,
     marginTop: 3,
   },
   photographerCard: {
@@ -838,7 +900,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: theme.imagePlaceholder,
   },
   photographerInfo: {
     flex: 1,
@@ -846,21 +908,21 @@ const styles = StyleSheet.create({
   photographerName: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
   username: {
     fontSize: 13,
-    color: "#6B7280",
+    color: theme.textSecondary,
     marginTop: 4,
   },
   description: {
     fontSize: 16,
     lineHeight: 24,
     fontWeight: "500",
-    color: "#111827",
+    color: theme.text,
   },
   readMore: {
-    color: "#4F46E5",
+    color: theme.info,
     fontSize: 13,
     fontWeight: "600",
     marginTop: 6,
@@ -872,12 +934,12 @@ const styles = StyleSheet.create({
   tag: {
     paddingHorizontal: 11,
     paddingVertical: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: theme.surfaceSecondary,
     borderRadius: 10,
   },
   tagText: {
     fontSize: 12,
-    color: "#374151",
+    color: theme.textSecondary,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -890,26 +952,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: theme.text,
   },
   sectionSubtitle: {
     marginTop: 4,
     fontSize: 12,
-    color: "#6B7280",
-  },
-  viewAllButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 9,
-  },
-  viewAllText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
+    color: theme.textSecondary,
   },
   postsList: {
     gap: 12,
@@ -922,13 +970,13 @@ const styles = StyleSheet.create({
     width: 148,
     height: 178,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: theme.imagePlaceholder,
   },
   postCaption: {
     marginTop: 7,
     fontSize: 12,
     lineHeight: 17,
-    color: "#374151",
+    color: theme.textSecondary,
   },
   postsLoading: {
     minHeight: 100,
@@ -937,14 +985,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+  postsFooter: {
+    minWidth: 80,
+    minHeight: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   postsLoadingText: {
-    color: "#6B7280",
+    color: theme.textSecondary,
     fontSize: 13,
   },
   emptyPosts: {
     minHeight: 100,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: theme.border,
     borderStyle: "dashed",
     borderRadius: 12,
     alignItems: "center",
@@ -953,17 +1008,18 @@ const styles = StyleSheet.create({
   },
   emptyPostsText: {
     fontSize: 13,
-    color: "#6B7280",
+    color: theme.textSecondary,
   },
   unsplashAttribution: {
     borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    borderTopColor: theme.divider,
     marginTop: 24,
     paddingTop: 14,
   },
   attributionText: {
-    color: "#6B7280",
+    color: theme.textSecondary,
     fontSize: 11,
     textAlign: "center",
   },
-});
+  });
+}
